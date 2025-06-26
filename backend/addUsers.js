@@ -68,7 +68,7 @@ async function addUsers() {
     console.log('Creating Muskan user...');
     const muskan = new User({
       role: 'M',
-      password: process.env.MUSKAN_PASSWORD || 'smileyy'
+      password: 'smileyy'
     });
     await muskan.save();
     console.log('✅ Muskan (M) user created successfully');
@@ -77,15 +77,15 @@ async function addUsers() {
     console.log('Creating Vinay user...');
     const vinay = new User({
       role: 'V',
-      password: process.env.VINAY_PASSWORD || 'vinayy'
+      password: 'vinayy'
     });
     await vinay.save();
     console.log('✅ Vinay (V) user created successfully');
 
     console.log('\n🎉 Users added successfully!');
     console.log('📝 Login credentials:');
-    console.log('   Muskan (M):', process.env.MUSKAN_PASSWORD || 'smileyy');
-    console.log('   Vinay (V):', process.env.VINAY_PASSWORD || 'vinayy');
+    console.log('   Muskan (M): smileyy');
+    console.log('   Vinay (V): vinayy');
 
     // Verify users were created
     const allUsers = await User.find();
