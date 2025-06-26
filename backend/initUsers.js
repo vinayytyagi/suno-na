@@ -18,7 +18,7 @@ async function initializeUsers() {
     // Create Muskan (M)
     const muskan = new User({
       role: 'M',
-      password: process.env.MUSKAN_PASSWORD || 'muskan123'
+      password: process.env.MUSKAN_PASSWORD || 'smileyy'
     });
     await muskan.save();
     console.log('Muskan (M) user created');
@@ -26,15 +26,15 @@ async function initializeUsers() {
     // Create Vinay (V)
     const vinay = new User({
       role: 'V',
-      password: process.env.VINAY_PASSWORD || 'vinay123'
+      password: process.env.VINAY_PASSWORD || 'vinayy'
     });
     await vinay.save();
     console.log('Vinay (V) user created');
 
     console.log('Users initialized successfully!');
     console.log('Default passwords:');
-    console.log('Muskan (M):', process.env.MUSKAN_PASSWORD || 'muskan123');
-    console.log('Vinay (V):', process.env.VINAY_PASSWORD || 'vinay123');
+    console.log('Muskan (M):', process.env.MUSKAN_PASSWORD || 'smileyy');
+    console.log('Vinay (V):', process.env.VINAY_PASSWORD || 'vinayy');
 
   } catch (error) {
     console.error('Error initializing users:', error);
