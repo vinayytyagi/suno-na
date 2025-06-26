@@ -149,6 +149,9 @@ router.post('/:songId/play', authenticateToken, async (req, res) => {
 
     // Increment play count
     await song.incrementPlayCount(userRole);
+    // Add to play history
+    song.playHistory.push({ user: userRole, playedAt: new Date() });
+    await song.save();
 
     res.json({
       message: 'Play count updated',
@@ -159,6 +162,22 @@ router.post('/:songId/play', authenticateToken, async (req, res) => {
   } catch (error) {
     console.error('Play tracking error:', error);
     res.status(500).json({ message: 'Failed to track play' });
+  }
+});
+
+// Get play history for a song
+router.get('/:songId/play-history', authenticateToken, async (req, res) => {
+  try {
+    const { songId } = req.params;
+    const song = await Song.findById(songId);
+    if (!song) {
+      return res.status(404).json({ message: 'Song not found' });
+    }
+    // Sort by playedAt descending (most recent first)
+    const history = [...(song.playHistory || [])].sort((a, b) => new Date(b.playedAt) - new Date(a.playedAt));
+    res.json(history);
+  } catch (error) {
+    res.status(500).json({ message: 'Failed to fetch play history', error: error.message });
   }
 });
 

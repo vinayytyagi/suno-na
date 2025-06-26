@@ -13,6 +13,9 @@ import axios from 'axios';
 import { useSocket } from '../contexts/SocketContext';
 import { useAuth } from '../contexts/AuthContext';
 import EmojiPicker from 'emoji-picker-react';
+import LoveDoveeLoader from './LoveDoveeLoader';
+import ModalPortal from './ModalPortal';
+import { useNotification } from '../contexts/NotificationContext';
 
 // Get API URL from environment variable
 const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000';
@@ -46,6 +49,20 @@ const SongList = ({ songs, userRole, nowPlaying, onDelete, onRefresh }) => {
   const [audioURLs, setAudioURLs] = useState({});
   const [recordingTime, setRecordingTime] = useState({});
   const recordingTimers = useRef({});
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [deletePassword, setDeletePassword] = useState('');
+  const [deleteSongId, setDeleteSongId] = useState(null);
+  const [deleteError, setDeleteError] = useState('');
+  const { notify } = useNotification();
+  const [lastPlayedSongId, setLastPlayedSongId] = useState(null);
+  const [lastPlayedTime, setLastPlayedTime] = useState(0);
+  // For emoji picker outside click
+  const emojiPickerRefs = useRef({});
+  // Play history modal state
+  const [showPlayHistoryModal, setShowPlayHistoryModal] = useState(false);
+  const [playHistory, setPlayHistory] = useState([]);
+  const [playHistoryLoading, setPlayHistoryLoading] = useState(false);
+  const [playHistorySong, setPlayHistorySong] = useState(null);
 
   // Define the speed cycle order
   const speedCycle = [1, 1.25, 1.5, 2, 0.5, 0.75];
@@ -87,15 +104,24 @@ const SongList = ({ songs, userRole, nowPlaying, onDelete, onRefresh }) => {
       let audio = audioRefs.current[song.id];
       if (!audio) {
         audio = new window.Audio(song.cloudinaryUrl);
-      audioRefs.current[song.id] = audio;
-      audio.addEventListener('ended', () => handleAudioEnded(song));
-      audio.addEventListener('error', (e) => console.error('Audio error:', e));
+        audioRefs.current[song.id] = audio;
+        audio.addEventListener('ended', () => handleAudioEnded(song));
+        audio.addEventListener('error', (e) => console.error('Audio error:', e));
         audio.addEventListener('timeupdate', () => {
           setCurrentTime(audio.currentTime);
         });
+      } else {
+        // If resuming the same song after pause, resume from lastPlayedTime
+        if (lastPlayedSongId === song.id && lastPlayedTime > 0) {
+          audio.currentTime = lastPlayedTime;
+        } else {
+          audio.currentTime = 0; // Start from beginning if switching songs
+        }
       }
 
       setPlayingSong(song);
+      setLastPlayedSongId(song.id);
+      setLastPlayedTime(0);
       emitStartListening(song.id);
 
       try {
@@ -124,12 +150,12 @@ const SongList = ({ songs, userRole, nowPlaying, onDelete, onRefresh }) => {
   // Handle download
   const handleDownload = (song) => {
     const link = document.createElement('a');
-    // Add ?dl=1 to force download from Cloudinary
     link.href = song.cloudinaryUrl + (song.cloudinaryUrl.includes('?') ? '&' : '?') + 'dl=1';
     link.download = `${song.title}.mp3`;
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
+    notify('Song downloaded!');
   };
 
   // Handle speed change
@@ -148,6 +174,8 @@ const SongList = ({ songs, userRole, nowPlaying, onDelete, onRefresh }) => {
         audio.pause();
       }
       setPlayingSong(null);
+      setLastPlayedSongId(song.id);
+      setLastPlayedTime(audioRefs.current[song.id]?.currentTime || 0);
       emitStopListening(song.id);
       await axios.post(`${API_URL}/api/songs/${song.id}/listening`, {
         isListening: false,
@@ -382,6 +410,101 @@ const SongList = ({ songs, userRole, nowPlaying, onDelete, onRefresh }) => {
     setCommentLoading((prev) => ({ ...prev, [songId]: false }));
   };
 
+  // Custom delete handler for Muskan
+  const handleDeleteWithPassword = (songId) => {
+    setDeleteSongId(songId);
+    setDeletePassword('');
+    setDeleteError('');
+    setShowDeleteModal(true);
+  };
+  const handleConfirmDelete = () => {
+    if (deletePassword === 'delete') {
+      onDelete(deleteSongId);
+      setShowDeleteModal(false);
+      setDeletePassword('');
+      setDeleteSongId(null);
+      setDeleteError('');
+      notify('Song deleted!');
+    } else {
+      setDeleteError('Incorrect password!');
+      notify('Incorrect password!');
+    }
+  };
+  const handleCancelDelete = () => {
+    setShowDeleteModal(false);
+    setDeletePassword('');
+    setDeleteSongId(null);
+    setDeleteError('');
+  };
+
+  // Prevent background scroll when modal is open
+  useEffect(() => {
+    if (showDeleteModal) {
+      document.body.classList.add('overflow-hidden');
+    } else {
+      document.body.classList.remove('overflow-hidden');
+    }
+    return () => {
+      document.body.classList.remove('overflow-hidden');
+    };
+  }, [showDeleteModal]);
+
+  // For sharing, show a toast when the share action is triggered (e.g., after copying link)
+  const handleShare = (song) => {
+    const url = song.cloudinaryUrl;
+    const title = song.title;
+    if (navigator.share) {
+      navigator.share({
+        title: `Listen to ${title}`,
+        text: `Check out this song: ${title}`,
+        url
+      }).then(() => notify('Shared!')).catch(() => notify('Share cancelled'));
+    } else if (navigator.clipboard) {
+      navigator.clipboard.writeText(url)
+        .then(() => notify('Song link copied!'))
+        .catch(() => {
+          window.prompt('Copy this link:', url);
+          notify('Copy the link manually');
+        });
+    } else {
+      window.prompt('Copy this link:', url);
+      notify('Copy the link manually');
+    }
+  };
+
+  // For emoji picker outside click
+  useEffect(() => {
+    function handleClickOutside(event) {
+      Object.keys(emojiPickerRefs.current).forEach(songId => {
+        if (showEmojiPicker[songId] && emojiPickerRefs.current[songId] && !emojiPickerRefs.current[songId].contains(event.target)) {
+          setShowEmojiPicker(prev => ({ ...prev, [songId]: false }));
+        }
+      });
+    }
+    if (Object.values(showEmojiPicker).some(Boolean)) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [showEmojiPicker]);
+
+  const handleShowPlayHistory = async (song) => {
+    setShowPlayHistoryModal(true);
+    setPlayHistorySong(song);
+    setPlayHistoryLoading(true);
+    try {
+      const token = localStorage.getItem('token');
+      const res = await axios.get(`${API_URL}/api/songs/${song.id || song._id}/play-history`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      setPlayHistory(res.data);
+    } catch (err) {
+      setPlayHistory([]);
+    }
+    setPlayHistoryLoading(false);
+  };
+
   return (
     <>
       {/* Search and Filter Bar */}
@@ -490,14 +613,45 @@ const SongList = ({ songs, userRole, nowPlaying, onDelete, onRefresh }) => {
                   <h3 className="text-lg font-semibold text-gray-900 truncate">
                     {song.title}
                   </h3>
+                  <button
+                    onClick={() => isPlaying ? handlePause(song) : handlePlay(song)}
+                    disabled={loadingSongId === song.id}
+                    className={`ml-1 p-2 rounded-full transition-all duration-200 ${
+                      isPlaying
+                        ? 'bg-romantic-500 text-white hover:bg-romantic-600'
+                        : 'bg-primary-500 text-white hover:bg-primary-600'
+                    } ${loadingSongId === song.id ? 'opacity-50 cursor-not-allowed' : ''}`}
+                    style={{ minWidth: 36, minHeight: 36 }}
+                  >
+                    {isPlaying ? (
+                      <PauseIcon className="h-5 w-5" />
+                    ) : loadingSongId === song.id ? (
+                      <span className="inline-block align-middle"><span role="img" aria-label="love">💕</span></span>
+                    ) : (
+                      <PlayIcon className="h-5 w-5" />
+                    )}
+                  </button>
+                  {isPlaying && (
+                    <button
+                      className="ml-2 px-2 py-1 text-xs rounded bg-primary-100 text-primary-700 hover:bg-primary-200 border border-primary-200 transition-all duration-200"
+                      onClick={() => {
+                        const audio = audioRefs.current[song.id];
+                        const current = audio?.playbackRate || 1;
+                        const next = getNextSpeed(current);
+                        handleSpeedChange(song, next);
+                      }}
+                    >
+                      {audioRefs.current[song.id]?.playbackRate || 1}x
+                    </button>
+                  )}
                   {getListeners(song).length > 0 && (
                     <div className="flex items-center space-x-2">
-                      {getListeners(song).includes('M') && (
+                      {getListeners(song).includes('M') && user.role === 'V' && (
                         <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-pink-100 text-pink-600 border border-pink-200 animate-pulse">
                           <span className="w-2 h-2 bg-pink-500 rounded-full mr-1"></span>M is listening
                         </span>
                       )}
-                      {getListeners(song).includes('V') && (
+                      {getListeners(song).includes('V') && user.role === 'M' && (
                         <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-600 border border-blue-200 animate-pulse">
                           <span className="w-2 h-2 bg-blue-500 rounded-full mr-1"></span>V is listening
                         </span>
@@ -505,181 +659,90 @@ const SongList = ({ songs, userRole, nowPlaying, onDelete, onRefresh }) => {
                     </div>
                   )}
                 </div>
-                {/* Modern Info Bar for Song Details - ICONS ONLY, NO LABELS */}
-                <div className="flex flex-col sm:flex-row flex-wrap gap-2 sm:gap-3 items-start sm:items-center bg-gray-50 rounded-lg px-2 sm:px-4 py-2 mb-1 border border-gray-100 shadow-sm">
-                  {/* Duration */}
-                  <span className="flex items-center text-xs text-gray-700 font-semibold bg-white/80 rounded px-2 py-1 shadow-sm" title="Duration">
-                    <svg className="h-4 w-4 mr-1 text-primary-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" strokeWidth="2" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6l4 2" /></svg>
-                    {song.duration}
-                  </span>
-                  {/* Date & Time Together */}
-                  <span className="flex items-center text-xs text-gray-700 font-semibold bg-white/80 rounded px-2 py-1 shadow-sm" title="Uploaded on">
-                    <svg className="h-4 w-4 mr-1 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2" strokeWidth="2" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 2v4M8 2v4M3 10h18" /></svg>
-                    {(() => {
-                      const d = new Date(song.uploadTime);
-                      const date = d.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
-                      const time = d.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true });
-                      return `${date}, ${time}`;
-                    })()}
-                  </span>
-                  {/* Total Plays (V) - SPECIAL BADGE */}
-                  <span className="flex items-center text-base font-extrabold bg-gradient-to-r from-pink-500 to-rose-400 text-white rounded-full px-3 sm:px-4 py-1 shadow-lg border-2 border-pink-300 ring-2 ring-pink-200/60" style={{boxShadow:'0 2px 12px 0 rgba(232,80,140,0.15)'}} title="Total plays (Vinay)">
-                    <svg className="h-5 w-5 mr-2 text-white drop-shadow" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 18v-6a9 9 0 0118 0v6" /><circle cx="12" cy="18" r="4" strokeWidth="2" /></svg>
-                    {song.playCounts?.V ?? 0}
-                  </span>
-                  {/* Total Play Time (V) - PROMINENT BADGE */}
-                  <span className="flex items-center text-sm font-bold bg-gradient-to-r from-amber-400 to-yellow-300 text-amber-900 rounded-full px-2 sm:px-3 py-1 shadow border border-amber-200" title="Total play time (Vinay)">
-                    <svg className="h-4 w-4 mr-1 text-amber-700" fill="none" stroke="currentColor" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" strokeWidth="2" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6l4 2" /></svg>
-                    {(() => {
-                      const durationSec = durationToSeconds(song.duration);
-                      const playTime = (song.playCounts?.V ?? 0) * durationSec;
-                      return formatPlayTime(playTime);
-                    })()}
-                  </span>
-                  {/* Download and Share Buttons */}
-                  <button
-                    className="ml-0 sm:ml-2 flex items-center px-2 py-1 rounded bg-gray-100 hover:bg-gray-200 border border-gray-200 text-gray-700 text-xs font-medium transition"
-                    title="Download"
-                    onClick={() => handleDownload(song)}
-                  >
-                    <svg className="h-4 w-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2M7 10l5 5 5-5M12 4v12" /></svg>
-                    Download
-                  </button>
-                  <button
-                    className="flex items-center px-2 py-1 rounded bg-gray-100 hover:bg-gray-200 border border-gray-200 text-gray-700 text-xs font-medium transition"
-                    title="Share"
-                    onClick={() => setSharePopoverId(song.id)}
-                  >
-                    <ShareIcon className="h-4 w-4 mr-1" />
-                    Share
-                  </button>
-                </div>
-                {/* Play Counts (M/V) - removed as per request */}
-              </div>
-
-              {/* Controls */}
-              <div className="flex flex-col xs:flex-row flex-wrap items-center gap-2 sm:gap-3 justify-center ml-0 sm:ml-4 mt-3 sm:mt-0">
-                  {/* Speed Controls (left of play/pause) */}
-                  {isPlaying && (
-                    <div className="flex items-center mr-2">
-                      <button
-                        className="px-2 py-1 text-xs rounded bg-primary-500 text-white hover:bg-primary-600 transition-all duration-200"
-                        onClick={() => {
-                          const audio = audioRefs.current[song.id];
-                          const current = audio?.playbackRate || 1;
-                          const next = getNextSpeed(current);
-                          handleSpeedChange(song, next);
-                        }}
-                      >
-                        {audioRefs.current[song.id]?.playbackRate || 1}x
-                      </button>
-                    </div>
-                  )}
-                {/* Play/Pause Button */}
-                <button
-                  onClick={() => isPlaying ? handlePause(song) : handlePlay(song)}
-                    disabled={loadingSongId === song.id}
-                  className={`p-3 rounded-full transition-all duration-200 ${
-                    isPlaying
-                      ? 'bg-romantic-500 text-white hover:bg-romantic-600'
-                      : 'bg-primary-500 text-white hover:bg-primary-600'
-                    } ${loadingSongId === song.id ? 'opacity-50 cursor-not-allowed' : ''}`}
-                >
-                  {isPlaying ? (
-                    <PauseIcon className="h-5 w-5" />
-                    ) : loadingSongId === song.id ? (
-                      <svg className="h-5 w-5 animate-spin" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"></path></svg>
-                  ) : (
-                    <PlayIcon className="h-5 w-5" />
-                  )}
-                </button>
-
-                {/* Download Button */}
-                <button
-                  onClick={() => handleDownload(song)}
-                  className="p-2 text-gray-400 hover:text-blue-500 hover:bg-blue-50 rounded-lg transition-colors duration-200"
-                  title="Download song"
-                >
-                  <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                  </svg>
-                </button>
-
-                {/* Delete Button (Muskan only) */}
-                {userRole === 'M' && (
-                  <button
-                    onClick={() => onDelete(song.id)}
-                    className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors duration-200"
-                    title="Delete song"
-                  >
-                    <TrashIcon className="h-5 w-5" />
-                  </button>
-                )}
-
-                  {/* Share Button */}
-                  <div className="relative">
+                {/* Responsive Info Bar for Song Details */}
+                <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:gap-3 items-start sm:items-center bg-gray-50 rounded-lg px-2 sm:px-4 py-2 mb-1 border border-gray-100 shadow-sm">
+                  {/* Row 1: Duration & Upload Time */}
+                  <div className="flex flex-row gap-2 w-full sm:w-auto">
+                    <span className="flex items-center text-xs text-gray-700 font-semibold bg-white/80 rounded px-2 py-1 shadow-sm" title="Duration">
+                      <svg className="h-4 w-4 mr-1 text-primary-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" strokeWidth="2" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6l4 2" /></svg>
+                      {song.duration}
+                    </span>
+                    <span className="flex items-center text-xs text-gray-700 font-semibold bg-white/80 rounded px-2 py-1 shadow-sm" title="Uploaded on">
+                      <svg className="h-4 w-4 mr-1 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2" strokeWidth="2" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 2v4M8 2v4M3 10h18" /></svg>
+                      {(() => {
+                        const d = new Date(song.uploadTime);
+                        const date = d.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
+                        const time = d.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true });
+                        return `${date}, ${time}`;
+                      })()}
+                    </span>
+                  </div>
+                  {/* Row 2: Download/Share/Delete Buttons (mobile: order-2, sm+: order-2) */}
+                  <div className="flex flex-row gap-2 w-full sm:w-auto order-2">
                     <button
-                      onClick={async () => {
-                        if (navigator.share) {
-                          try {
-                            await navigator.share({
-                              title: song.title,
-                              text: `Listen to this song: ${song.title}`,
-                              url: song.cloudinaryUrl
-                            });
-                          } catch (e) {}
-                        } else {
-                          setSharePopoverId(sharePopoverId === song.id ? null : song.id);
-                        }
-                      }}
-                      className="p-2 text-gray-400 hover:text-purple-500 hover:bg-purple-50 rounded-lg transition-colors duration-200"
-                      title="Share song"
+                      className="flex items-center px-2 py-1 rounded bg-gray-100 hover:bg-gray-200 border border-gray-200 text-gray-700 text-xs font-medium transition"
+                      title="Download"
+                      onClick={() => handleDownload(song)}
                     >
-                      <ShareIcon className="h-5 w-5" />
+                      <svg className="h-4 w-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2M7 10l5 5 5-5M12 4v12" /></svg>
+                      Download
                     </button>
-                    {/* Popover for social share links */}
-                    {sharePopoverId === song.id && (
-                      <div className="absolute z-20 right-0 mt-2 w-48 bg-white border border-gray-200 rounded shadow-lg p-3 flex flex-col space-y-2 animate-fade-in">
-                        <a
-                          href={`https://wa.me/?text=${encodeURIComponent('Listen to this song: ' + song.title + ' ' + song.cloudinaryUrl)}`}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="text-green-600 hover:underline flex items-center"
-                        >
-                          <span className="mr-2">🟢</span> WhatsApp
-                        </a>
-                        <a
-                          href={`https://www.instagram.com/?url=${encodeURIComponent(song.cloudinaryUrl)}`}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="text-pink-500 hover:underline flex items-center"
-                        >
-                          <span className="mr-2">🟣</span> Instagram
-                        </a>
-                        <a
-                          href={`https://www.snapchat.com/scan?attachmentUrl=${encodeURIComponent(song.cloudinaryUrl)}`}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="text-yellow-500 hover:underline flex items-center"
-                        >
-                          <span className="mr-2">🟡</span> Snapchat
-                        </a>
-                        <button
-                          onClick={() => setSharePopoverId(null)}
-                          className="mt-2 text-xs text-gray-400 hover:text-gray-700"
-                        >Close</button>
-                      </div>
+                    <button
+                      className="flex items-center px-2 py-1 rounded bg-gray-100 hover:bg-gray-200 border border-gray-200 text-gray-700 text-xs font-medium transition"
+                      title="Share"
+                      onClick={() => handleShare(song)}
+                    >
+                      <svg className="h-4 w-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49" stroke="currentColor" strokeWidth="2"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49" stroke="currentColor" strokeWidth="2"/></svg>
+                      Share
+                    </button>
+                    {userRole === 'M' && (
+                      <button
+                        className="flex items-center px-2 py-1 rounded bg-gray-100 hover:bg-red-100 border border-gray-200 text-red-500 text-xs font-medium transition"
+                        onClick={() => handleDeleteWithPassword(song.id)}
+                        title="Delete"
+                      >
+                        <TrashIcon className="h-4 w-4 mr-1" /> Delete
+                      </button>
                     )}
                   </div>
+                  {/* Row 3: Play Count & Play Time (mobile: order-3, sm+: order-2) */}
+                  <div className="flex flex-row gap-2 w-full sm:w-auto justify-center order-3 sm:order-2">
+                    <span
+                      className="flex items-center text-base font-extrabold bg-gradient-to-r from-pink-500 to-rose-400 text-white rounded-full px-3 sm:px-4 py-1 shadow-lg border-2 border-pink-300 ring-2 ring-pink-200/60 cursor-pointer hover:scale-105 transition"
+                      style={{boxShadow:'0 2px 12px 0 rgba(232,80,140,0.15)'}}
+                      title="Total plays (Vinay)"
+                      onClick={() => handleShowPlayHistory(song)}
+                    >
+                      <svg className="h-5 w-5 mr-2 text-white drop-shadow" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 18v-6a9 9 0 0118 0v6" /><circle cx="12" cy="18" r="4" strokeWidth="2" /></svg>
+                      {song.playCounts?.V ?? 0}
+                    </span>
+                    <span className="flex items-center text-sm font-bold bg-gradient-to-r from-amber-400 to-yellow-300 text-amber-900 rounded-full px-2 sm:px-3 py-1 shadow border border-amber-200" title="Total play time (Vinay)">
+                      <svg className="h-4 w-4 mr-1 text-amber-700" fill="none" stroke="currentColor" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" strokeWidth="2" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6l4 2" /></svg>
+                      {(() => {
+                        const durationSec = durationToSeconds(song.duration);
+                        const playTime = (song.playCounts?.V ?? 0) * durationSec;
+                        return formatPlayTime(playTime);
+                      })()}
+                    </span>
+                  </div>
+                </div>
               </div>
             </div>
 
-            {/* Progress Bar */}
-            {isPlaying && (
+            {/* Progress Bar: Show for last played song, even if paused, until another song is played or page is refreshed */}
+            {(playingSong?.id === song.id || (playingSong === null && lastPlayedSongId === song.id && lastPlayedTime > 0)) && (
                 <div className="flex items-center w-full mt-4">
                   {/* Time left of bar */}
                   <span className="font-mono text-xs text-gray-500 mr-2" style={{minWidth: 44, textAlign: 'right'}}>
-                    {Math.floor(currentTime / 60)}:{(Math.floor(currentTime) % 60).toString().padStart(2, '0')}
+                    {(() => {
+                      let time = 0;
+                      if (playingSong?.id === song.id) {
+                        time = currentTime;
+                      } else if (lastPlayedSongId === song.id) {
+                        time = lastPlayedTime;
+                      }
+                      return `${Math.floor(time / 60)}:${(Math.floor(time) % 60).toString().padStart(2, '0')}`;
+                    })()}
                   </span>
                   <div
                     className="relative flex-1 h-4 flex items-center group cursor-pointer select-none"
@@ -715,6 +778,11 @@ const SongList = ({ songs, userRole, nowPlaying, onDelete, onRefresh }) => {
                       if (audio && audio.duration) {
                         audio.currentTime = percent * audio.duration;
                         setCurrentTime(audio.currentTime);
+                        if (!playingSong || playingSong.id !== song.id) {
+                          // If paused, update lastPlayedTime for this song
+                          setLastPlayedSongId(song.id);
+                          setLastPlayedTime(audio.currentTime);
+                        }
                       }
                       setDragging(false);
                       setDragTime(null);
@@ -729,20 +797,28 @@ const SongList = ({ songs, userRole, nowPlaying, onDelete, onRefresh }) => {
                     <div className="bg-gray-200 rounded-full h-2 w-full absolute top-1/2 left-0 -translate-y-1/2"></div>
                     <div
                       className="bg-primary-500 h-2 rounded-full absolute top-1/2 left-0 -translate-y-1/2 transition-all duration-300"
-                      style={{ width: `${((dragging && dragTime != null ? dragTime : currentTime) / (audioRefs.current[song.id]?.duration || durationToSeconds(song.duration) || 1)) * 100}%` }}
-                  ></div>
+                      style={{ width: `${((dragging && dragTime != null ? dragTime : (playingSong?.id === song.id ? currentTime : lastPlayedSongId === song.id ? lastPlayedTime : 0)) / (audioRefs.current[song.id]?.duration || durationToSeconds(song.duration) || 1)) * 100}%` }}
+                    ></div>
                     {/* Draggable thumb */}
                     <div
                       className="absolute z-10"
                       style={{
-                        left: `calc(${((dragging && dragTime != null ? dragTime : currentTime) / (audioRefs.current[song.id]?.duration || durationToSeconds(song.duration) || 1)) * 100}% - 8px)`
+                        left: `calc(${((dragging && dragTime != null ? dragTime : (playingSong?.id === song.id ? currentTime : lastPlayedSongId === song.id ? lastPlayedTime : 0)) / (audioRefs.current[song.id]?.duration || durationToSeconds(song.duration) || 1)) * 100}% - 8px)`
                       }}
                     >
                       <div className="w-4 h-4 bg-primary-500 rounded-full shadow border-2 border-white group-hover:scale-110 transition-transform"></div>
                       {/* Tooltip with time on drag/hover */}
                       {dragging && dragTime != null && (
                         <div className="absolute -top-8 left-1/2 -translate-x-1/2 px-2 py-1 rounded bg-gray-900 text-white text-xs shadow-lg">
-                          {Math.floor(dragTime / 60)}:{(Math.floor(dragTime) % 60).toString().padStart(2, '0')}
+                          {(() => {
+                            let time = 0;
+                            if (playingSong?.id === song.id) {
+                              time = currentTime;
+                            } else if (lastPlayedSongId === song.id) {
+                              time = lastPlayedTime;
+                            }
+                            return `${Math.floor(time / 60)}:${(Math.floor(time) % 60).toString().padStart(2, '0')}`;
+                          })()}
                         </div>
                       )}
                     </div>
@@ -804,10 +880,10 @@ const SongList = ({ songs, userRole, nowPlaying, onDelete, onRefresh }) => {
                 {/* Auto-scroll anchor */}
                 <div ref={el => commentsEndRefs.current[song.id] = el} />
               </div>
-              <div className="flex flex-col xs:flex-row items-stretch xs:items-center gap-2 mt-2">
+              <div className="flex items-center gap-2 mt-2 bg-white/80 border border-gray-200 rounded-lg px-2 py-1 shadow-sm relative">
                 <input
                   type="text"
-                  className="flex-1 min-w-0 rounded-lg border border-gray-200 px-3 py-2 text-sm focus:ring-2 focus:ring-primary-100 focus:border-primary-400 transition"
+                  className="flex-1 min-w-0 bg-transparent border-none outline-none text-sm px-2 py-2"
                   placeholder="Add a comment..."
                   value={commentInputs[song.id] || ''}
                   onChange={e => setCommentInputs((prev) => ({ ...prev, [song.id]: e.target.value }))}
@@ -815,24 +891,44 @@ const SongList = ({ songs, userRole, nowPlaying, onDelete, onRefresh }) => {
                   disabled={commentLoading[song.id] || recording[song.id]}
                 />
                 <button
-                  className="rounded-lg px-2 py-2 bg-gray-50 hover:bg-gray-100 text-xl"
+                  className="rounded-full p-2 hover:bg-pink-50 transition"
                   onClick={() => setShowEmojiPicker(prev => ({ ...prev, [song.id]: !prev[song.id] }))}
                   disabled={commentLoading[song.id] || recording[song.id]}
-                >😊</button>
+                  title="Add emoji"
+                >
+                  <svg className="h-5 w-5 text-pink-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" strokeWidth="2" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 14s1.5 2 4 2 4-2 4-2" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 9h.01M15 9h.01" /></svg>
+                </button>
                 <button
-                  className={`rounded-lg px-2 py-2 bg-gray-50 hover:bg-gray-100 text-xl ${recording[song.id] ? 'text-red-500' : ''}`}
+                  className={`rounded-full p-2 hover:bg-blue-50 transition ${recording[song.id] ? 'text-red-500' : 'text-blue-400'}`}
                   onClick={() => recording[song.id] ? stopRecording(song.id) : startRecording(song.id)}
                   disabled={commentLoading[song.id]}
                   title={recording[song.id] ? 'Stop recording' : 'Record audio comment'}
-                >{recording[song.id] ? '■' : '🎤'}</button>
+                >
+                  {recording[song.id] ? (
+                    <svg className="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><rect x="9" y="9" width="6" height="6" rx="1" strokeWidth="2" /><rect x="3" y="3" width="18" height="18" rx="2" strokeWidth="2" /></svg>
+                  ) : (
+                    <svg className="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 3v10m0 0a4 4 0 004-4V7a4 4 0 00-8 0v2a4 4 0 004 4zm0 0v4m-4 0h8" /></svg>
+                  )}
+                </button>
                 <button
-                  className="btn-primary px-4 py-2 text-sm font-semibold rounded-lg"
+                  className="rounded-full p-2 hover:bg-green-50 transition text-green-500 cursor-pointer"
                   onClick={() => postComment(song.id)}
                   disabled={commentLoading[song.id] || !(commentInputs[song.id] || '').trim() || recording[song.id]}
-                >{commentLoading[song.id] ? <span className="animate-spin">⏳</span> : 'Post'}</button>
+                  title="Post comment"
+                  style={{ cursor: 'pointer' }}
+                >
+                  {commentLoading[song.id] ? (
+                    <span className="animate-spin">💕</span>
+                  ) : (
+                    <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M22 2L11 13" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M22 2l-7 20-4-9-9-4 20-7z" /></svg>
+                  )}
+                </button>
                 {/* Emoji Picker */}
                 {showEmojiPicker[song.id] && (
-                  <div className="absolute z-30 bottom-10 left-0">
+                  <div
+                    ref={el => { emojiPickerRefs.current[song.id] = el; }}
+                    className="absolute z-30 bottom-full left-3/4 -translate-x-1/2 mb-2"
+                  >
                     <EmojiPicker
                       onEmojiClick={(emojiData) => setCommentInputs(prev => ({ ...prev, [song.id]: (prev[song.id] || '') + emojiData.emoji }))}
                       theme="light"
@@ -863,6 +959,68 @@ const SongList = ({ songs, userRole, nowPlaying, onDelete, onRefresh }) => {
         );
       })}
     </div>
+    {/* Delete Password Modal */}
+    {showDeleteModal && (
+      <ModalPortal>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+          <div className="bg-white rounded-xl shadow-lg p-6 w-full max-w-xs border-2 border-pink-200">
+            <h3 className="text-lg font-bold text-pink-600 mb-2 text-center">Confirm Delete</h3>
+            <p className="text-sm text-gray-600 mb-4 text-center">Enter password to delete this song:</p>
+            <input
+              type="password"
+              className="w-full px-4 py-2 border border-pink-300 rounded-lg focus:ring-2 focus:ring-pink-200 focus:border-pink-400 mb-2 text-center"
+              placeholder="Password"
+              value={deletePassword}
+              onChange={e => setDeletePassword(e.target.value)}
+              autoFocus
+            />
+            {deleteError && <div className="text-xs text-red-500 mb-2 text-center">{deleteError}</div>}
+            <div className="flex justify-center gap-3 mt-2">
+              <button
+                className="px-4 py-2 rounded-lg bg-pink-500 text-white font-semibold hover:bg-pink-600 transition"
+                onClick={handleConfirmDelete}
+              >Delete</button>
+              <button
+                className="px-4 py-2 rounded-lg bg-gray-100 text-gray-700 font-semibold hover:bg-gray-200 transition"
+                onClick={handleCancelDelete}
+              >Cancel</button>
+            </div>
+          </div>
+        </div>
+      </ModalPortal>
+    )}
+    {/* Play History Modal */}
+    {showPlayHistoryModal && (
+      <ModalPortal>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onMouseDown={e => {
+          if (e.target === e.currentTarget) setShowPlayHistoryModal(false);
+        }}>
+          <div className="bg-white rounded-xl shadow-lg p-6 w-full max-w-md border-2 border-pink-200 relative" onMouseDown={e => e.stopPropagation()}>
+            <button
+              className="absolute top-2 right-2 text-gray-400 hover:text-gray-700 text-2xl font-bold"
+              onClick={() => setShowPlayHistoryModal(false)}
+              title="Close"
+            >×</button>
+            <h3 className="text-lg font-bold text-pink-600 mb-2 text-center">Play History</h3>
+            <div className="mb-2 text-center text-gray-700 font-semibold">{playHistorySong?.title}</div>
+            {playHistoryLoading ? (
+              <div className="flex justify-center items-center py-8"><span className="animate-spin text-2xl">💕</span></div>
+            ) : playHistory.length === 0 ? (
+              <div className="text-center text-gray-400 italic">No play history yet.</div>
+            ) : (
+              <div className="max-h-64 overflow-y-auto divide-y divide-pink-100">
+                {playHistory.map((entry, idx) => (
+                  <div key={idx} className="flex items-center justify-between py-2 px-1">
+                    <span className={`font-bold ${entry.user === 'M' ? 'text-pink-500' : 'text-blue-500'}`}>{entry.user === 'M' ? 'Muskan' : 'Vinay'}</span>
+                    <span className="text-xs text-gray-700">{new Date(entry.playedAt).toLocaleString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: true })}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      </ModalPortal>
+    )}
     </>
   );
 };

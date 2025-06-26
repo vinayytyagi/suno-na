@@ -8,17 +8,23 @@ require('dotenv').config();
 const authRoutes = require('./routes/auth');
 const songRoutes = require('./routes/songs');
 
+const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:3000';
+
 const app = express();
 const server = http.createServer(app);
 const io = socketIo(server, {
   cors: {
-    origin: "http://localhost:3000",
-    methods: ["GET", "POST"]
+    origin: FRONTEND_URL,
+    methods: ["GET", "POST"],
+    credentials: true
   }
 });
 
 // Middleware
-app.use(cors());
+app.use(cors({
+  origin: FRONTEND_URL,
+  credentials: true
+}));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
@@ -71,7 +77,8 @@ function broadcastAllUserStatus() {
 io.on('connection', (socket) => {
   console.log('User connected:', socket.id);
 
-  socket.on('userLogin', (userData) => {
+  // Only set user as online when they are on the dashboard (not just login)
+  socket.on('userActive', (userData) => {
     connectedUsers.set(socket.id, userData);
     io.emit('userStatusUpdate', {
       userId: userData.role,
@@ -79,10 +86,31 @@ io.on('connection', (socket) => {
       socketId: socket.id
     });
     broadcastAllUserStatus();
-    // Notify Muskan when Vinay comes online
-    if (userData.role === 'V') {
-      io.emit('vinayOnline', { message: 'Vinay is now online!' });
+    // Notify only the other user when someone comes online
+    for (const [otherSocketId, otherUser] of connectedUsers.entries()) {
+      if (userData.role === 'V' && otherUser.role === 'M') {
+        io.to(otherSocketId).emit('vinayOnline', { message: 'Vinay is now online!' });
+      }
+      if (userData.role === 'M' && otherUser.role === 'V') {
+        io.to(otherSocketId).emit('muskanOnline', { message: 'Muskan is now online!' });
+      }
     }
+  });
+
+  // Optionally, handle userInactive if you want to mark as offline when leaving dashboard
+  socket.on('userInactive', (userData) => {
+    connectedUsers.delete(socket.id);
+    io.emit('userStatusUpdate', {
+      userId: userData.role,
+      status: 'offline',
+      socketId: socket.id
+    });
+    broadcastAllUserStatus();
+  });
+
+  // Keep userLogin for legacy/compatibility but don't set online here
+  socket.on('userLogin', (userData) => {
+    // Do nothing or just track login event if needed
   });
 
   socket.on('startListening', (songId) => {
@@ -140,6 +168,15 @@ io.on('connection', (socket) => {
       io.emit('nowPlaying', payload);
     }
     console.log('User disconnected:', socket.id);
+  });
+
+  // Relay RT lcn request from Vinay to Muskan
+  socket.on('requestMuskanLocationUpdate', () => {
+    for (const [otherSocketId, otherUser] of connectedUsers.entries()) {
+      if (otherUser.role === 'M') {
+        io.to(otherSocketId).emit('requestMuskanLocationUpdate');
+      }
+    }
   });
 });
 

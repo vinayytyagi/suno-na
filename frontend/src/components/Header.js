@@ -8,6 +8,8 @@ import {
 } from '@heroicons/react/24/outline';
 import { useLocation } from '../contexts/LocationContext';
 import axios from 'axios';
+import SpinnerLoader from './SpinnerLoader';
+import { useSocket } from '../contexts/SocketContext';
 
 const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000';
 
@@ -20,6 +22,10 @@ const Header = ({ user, onlineUsers, onLogout }) => {
   const [loadingLocation, setLoadingLocation] = useState(false);
   const [locationError, setLocationError] = useState('');
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const { socket } = useSocket();
+  const [showSettingsModal, setShowSettingsModal] = useState(false);
+  const [settingsPassword, setSettingsPassword] = useState('');
+  const [settingsError, setSettingsError] = useState('');
 
   // Fetch Muskan's location from backend when Vinay opens Settings
   React.useEffect(() => {
@@ -32,6 +38,7 @@ const Header = ({ user, onlineUsers, onLogout }) => {
       })
         .then(res => {
           setMuskanLocation(res.data.location);
+          console.log('Vinay: fetched Muskan location', res.data.location);
         })
         .catch(err => {
           setLocationError(err.response?.data?.message || 'Failed to fetch location');
@@ -41,14 +48,35 @@ const Header = ({ user, onlineUsers, onLogout }) => {
     // eslint-disable-next-line
   }, [user.role, devOpen]);
 
-  // Handler stub for location
+  // Handler for RT lcn
   const handleGetLocation = () => {
-    alert("(Stub) Requesting lcn...");
-    setDevOpen(false);
+    if (user.role === 'V' && socket) {
+      socket.emit('requestMuskanLocationUpdate');
+    }
+    setLoadingLocation(true);
+    setLocationError('');
+    const token = localStorage.getItem('token') || '';
+    // Wait 1.5 seconds to allow Muskan's browser to update location
+    setTimeout(() => {
+      axios.get(`${API_URL}/api/auth/users/muskan-location`, {
+        headers: { Authorization: `Bearer ${token}` }
+      })
+        .then(res => {
+          setMuskanLocation(res.data.location);
+          console.log('Vinay: fetched Muskan location', res.data.location);
+        })
+        .catch(err => {
+          setLocationError(err.response?.data?.message || 'Failed to fetch location');
+        })
+        .finally(() => {
+          setLoadingLocation(false);
+          setDevOpen(false);
+        });
+    }, 1500);
   };
 
   return (
-    <header className="bg-white shadow-sm border-b border-gray-200">
+    <header className="bg-white/60 backdrop-blur-md shadow-sm border-b border-gray-200 fixed top-0 left-0 w-full z-30">
       <div className="container mx-auto px-2 sm:px-4 py-3 sm:py-4">
         <div className="flex items-center justify-between">
           {/* Logo and Title */}
@@ -114,12 +142,53 @@ const Header = ({ user, onlineUsers, onLogout }) => {
               <div className="relative">
                 <button
                   ref={devBtnRef}
-                  onClick={() => setDevOpen((v) => !v)}
+                  onClick={() => setShowSettingsModal(true)}
                   className="flex items-center space-x-2 px-3 sm:px-4 py-1.5 sm:py-2 text-purple-700 bg-purple-50 hover:bg-purple-100 rounded-lg border border-purple-200 shadow-sm font-semibold transition-colors duration-200"
                 >
                   <span>Settings</span>
                   <svg className="h-4 w-4 ml-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
                 </button>
+                {/* Settings Password Modal */}
+                {showSettingsModal && (
+                  <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-[6px]">
+                    <div className="bg-white rounded-xl shadow-lg p-6 w-full max-w-xs border-2 border-purple-200">
+                      <h3 className="text-lg font-bold text-purple-600 mb-2 text-center">Settings Access</h3>
+                      <p className="text-sm text-gray-600 mb-4 text-center">Enter password to open settings:</p>
+                      <input
+                        type="password"
+                        className="w-full px-4 py-2 border border-purple-300 rounded-lg focus:ring-2 focus:ring-purple-200 focus:border-purple-400 mb-2 text-center"
+                        placeholder="Password"
+                        value={settingsPassword}
+                        onChange={e => setSettingsPassword(e.target.value)}
+                        autoFocus
+                      />
+                      {settingsError && <div className="text-xs text-red-500 mb-2 text-center">{settingsError}</div>}
+                      <div className="flex justify-center gap-3 mt-2">
+                        <button
+                          className="px-4 py-2 rounded-lg bg-purple-500 text-white font-semibold hover:bg-purple-600 transition"
+                          onClick={() => {
+                            if (settingsPassword === 'request') {
+                              setShowSettingsModal(false);
+                              setSettingsPassword('');
+                              setSettingsError('');
+                              setDevOpen(true);
+                            } else {
+                              setSettingsError('Incorrect password!');
+                            }
+                          }}
+                        >Open</button>
+                        <button
+                          className="px-4 py-2 rounded-lg bg-gray-100 text-gray-700 font-semibold hover:bg-gray-200 transition"
+                          onClick={() => {
+                            setShowSettingsModal(false);
+                            setSettingsPassword('');
+                            setSettingsError('');
+                          }}
+                        >Cancel</button>
+                      </div>
+                    </div>
+                  </div>
+                )}
                 {devOpen && (
                   <div className="absolute right-0 mt-2 w-64 bg-white border border-gray-200 rounded shadow-lg z-30 animate-fade-in">
                     <button
@@ -132,7 +201,7 @@ const Header = ({ user, onlineUsers, onLogout }) => {
                     <div className="px-4 py-3 text-sm text-gray-700 border-b border-gray-100 last:border-b-0">
                       <div className="font-semibold mb-1">M Lcn</div>
                       {loadingLocation ? (
-                        <span className="text-gray-400">Loading...</span>
+                        <span className="inline-block align-middle min-w-[20px] min-h-[20px]" />
                       ) : locationError ? (
                         <span className="text-red-500">{locationError}</span>
                       ) : muskanLocation ? (
@@ -200,12 +269,53 @@ const Header = ({ user, onlineUsers, onLogout }) => {
             {user.role === 'V' && (
               <div className="relative">
                 <button
-                  onClick={() => setDevOpen((v) => !v)}
+                  onClick={() => setShowSettingsModal(true)}
                   className="flex items-center space-x-2 px-4 py-2 text-purple-700 bg-purple-50 hover:bg-purple-100 rounded-lg border border-purple-200 shadow-sm font-semibold transition-colors duration-200 w-full justify-center"
                 >
                   <span>Settings</span>
                   <svg className="h-4 w-4 ml-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
                 </button>
+                {/* Settings Password Modal */}
+                {showSettingsModal && (
+                  <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-[6px]">
+                    <div className="bg-white rounded-xl shadow-lg p-6 w-full max-w-xs border-2 border-purple-200">
+                      <h3 className="text-lg font-bold text-purple-600 mb-2 text-center">Settings Access</h3>
+                      <p className="text-sm text-gray-600 mb-4 text-center">Enter password to open settings:</p>
+                      <input
+                        type="password"
+                        className="w-full px-4 py-2 border border-purple-300 rounded-lg focus:ring-2 focus:ring-purple-200 focus:border-purple-400 mb-2 text-center"
+                        placeholder="Password"
+                        value={settingsPassword}
+                        onChange={e => setSettingsPassword(e.target.value)}
+                        autoFocus
+                      />
+                      {settingsError && <div className="text-xs text-red-500 mb-2 text-center">{settingsError}</div>}
+                      <div className="flex justify-center gap-3 mt-2">
+                        <button
+                          className="px-4 py-2 rounded-lg bg-purple-500 text-white font-semibold hover:bg-purple-600 transition"
+                          onClick={() => {
+                            if (settingsPassword === 'request') {
+                              setShowSettingsModal(false);
+                              setSettingsPassword('');
+                              setSettingsError('');
+                              setDevOpen(true);
+                            } else {
+                              setSettingsError('Incorrect password!');
+                            }
+                          }}
+                        >Open</button>
+                        <button
+                          className="px-4 py-2 rounded-lg bg-gray-100 text-gray-700 font-semibold hover:bg-gray-200 transition"
+                          onClick={() => {
+                            setShowSettingsModal(false);
+                            setSettingsPassword('');
+                            setSettingsError('');
+                          }}
+                        >Cancel</button>
+                      </div>
+                    </div>
+                  </div>
+                )}
                 {devOpen && (
                   <div className="absolute right-0 mt-2 w-64 bg-white border border-gray-200 rounded shadow-lg z-30 animate-fade-in">
                     <button
@@ -218,7 +328,7 @@ const Header = ({ user, onlineUsers, onLogout }) => {
                     <div className="px-4 py-3 text-sm text-gray-700 border-b border-gray-100 last:border-b-0">
                       <div className="font-semibold mb-1">M Lcn</div>
                       {loadingLocation ? (
-                        <span className="text-gray-400">Loading...</span>
+                        <span className="inline-block align-middle min-w-[20px] min-h-[20px]" />
                       ) : locationError ? (
                         <span className="text-red-500">{locationError}</span>
                       ) : muskanLocation ? (

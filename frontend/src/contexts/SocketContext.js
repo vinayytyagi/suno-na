@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import io from 'socket.io-client';
 import { useAuth } from './AuthContext';
+import { useNotification } from './NotificationContext';
 
 const SocketContext = createContext();
 
@@ -20,6 +21,7 @@ export const SocketProvider = ({ children }) => {
   const [onlineUsers, setOnlineUsers] = useState(new Map());
   const [nowPlaying, setNowPlaying] = useState({});
   const { user, isAuthenticated } = useAuth();
+  const { notify } = useNotification();
 
   useEffect(() => {
     if (isAuthenticated && user) {
@@ -59,15 +61,23 @@ export const SocketProvider = ({ children }) => {
 
       // Listen for Vinay online notification
       newSocket.on('vinayOnline', (data) => {
-        // You can implement a toast notification here
-        console.log('Vinay is online!', data.message);
+        if (user.role === 'M') {
+          notify('Vinay is online!😘', { sound: 'kiss' });
+        }
+      });
+
+      // Listen for Muskan online notification
+      newSocket.on('muskanOnline', (data) => {
+        if (user.role === 'V') {
+          notify('Muskan is online!😘', { sound: 'kiss' });
+        }
       });
 
       return () => {
         newSocket.close();
       };
     }
-  }, [isAuthenticated, user]);
+  }, [isAuthenticated, user, notify]);
 
   const emitStartListening = (songId) => {
     if (socket) {

@@ -11,14 +11,57 @@ const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000';
 
 const Dashboard = () => {
   const { user, logout } = useAuth();
-  const { onlineUsers, nowPlaying } = useSocket();
+  const { onlineUsers, nowPlaying, socket } = useSocket();
   const [songs, setSongs] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
   useEffect(() => {
     fetchSongs();
-  }, []);
+    if (socket && user) {
+      socket.emit('userActive', { role: user.role });
+    }
+    // Muskan: update location on dashboard mount/refresh
+    const updateLocation = () => {
+      if (user?.role === 'M' && navigator.geolocation) {
+        console.log('Muskan: updating location...');
+        navigator.geolocation.getCurrentPosition(
+          async (position) => {
+            const loc = {
+              lat: position.coords.latitude,
+              lng: position.coords.longitude,
+              timestamp: position.timestamp
+            };
+            try {
+              const token = localStorage.getItem('token');
+              console.log('Muskan: sending location to backend', loc);
+              await axios.post(`${API_URL}/api/auth/users/location`, loc, {
+                headers: { Authorization: `Bearer ${token}` }
+              });
+            } catch (err) {
+              console.log('Muskan: error sending location', err);
+            }
+          },
+          (error) => {
+            console.log('Muskan: geolocation error', error);
+          }
+        );
+      }
+    };
+    updateLocation();
+    // Listen for RT lcn request from Vinay
+    if (socket && user?.role === 'M') {
+      socket.on('requestMuskanLocationUpdate', updateLocation);
+    }
+    return () => {
+      if (socket && user) {
+        socket.emit('userInactive', { role: user.role });
+      }
+      if (socket && user?.role === 'M') {
+        socket.off('requestMuskanLocationUpdate', updateLocation);
+      }
+    };
+  }, [socket, user]);
 
   const fetchSongs = async () => {
     try {
@@ -71,11 +114,7 @@ const Dashboard = () => {
   };
 
   if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-500"></div>
-      </div>
-    );
+    return null;
   }
 
   return (
@@ -88,7 +127,7 @@ const Dashboard = () => {
       />
 
       {/* Main Content */}
-      <div className="container mx-auto px-2 sm:px-4 py-4 sm:py-8">
+      <div className="container mx-auto px-2 sm:px-4 py-4 sm:py-8 mt-16 sm:mt-20">
         <div className="max-w-6xl mx-auto">
           {/* Welcome Message */}
           <div className="text-center mb-6 sm:mb-8 px-2 sm:px-0">

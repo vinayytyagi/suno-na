@@ -52,6 +52,12 @@ const songSchema = new mongoose.Schema({
       audioPublicId: { type: String },
       createdAt: { type: Date, default: Date.now }
     }
+  ],
+  playHistory: [
+    {
+      user: { type: String, enum: ['M', 'V'], required: true },
+      playedAt: { type: Date, default: Date.now }
+    }
   ]
 }, {
   timestamps: true
