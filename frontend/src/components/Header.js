@@ -70,7 +70,7 @@ const Header = ({ user, onlineUsers, onLogout }) => {
         })
         .finally(() => {
           setLoadingLocation(false);
-          setDevOpen(false);
+    setDevOpen(false);
         });
     }, 1500);
   };

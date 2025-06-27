@@ -90,7 +90,7 @@ io.on('connection', (socket) => {
     for (const [otherSocketId, otherUser] of connectedUsers.entries()) {
       if (userData.role === 'V' && otherUser.role === 'M') {
         io.to(otherSocketId).emit('vinayOnline', { message: 'Vinay is now online!' });
-      }
+    }
       if (userData.role === 'M' && otherUser.role === 'V') {
         io.to(otherSocketId).emit('muskanOnline', { message: 'Muskan is now online!' });
       }

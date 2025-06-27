@@ -57,14 +57,14 @@ const AppContent = () => {
 function App() {
   return (
     <NotificationProvider>
-      <LocationProvider>
-        <AuthProvider>
-          <SocketProvider>
+    <LocationProvider>
+      <AuthProvider>
+        <SocketProvider>
             <NotificationBar />
-            <AppContent />
-          </SocketProvider>
-        </AuthProvider>
-      </LocationProvider>
+          <AppContent />
+        </SocketProvider>
+      </AuthProvider>
+    </LocationProvider>
     </NotificationProvider>
   );
 }

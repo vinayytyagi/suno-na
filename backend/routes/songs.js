@@ -4,6 +4,9 @@ const cloudinary = require('cloudinary').v2;
 const jwt = require('jsonwebtoken');
 const Song = require('../models/Song');
 const router = express.Router();
+const { getAudioDurationInSeconds } = require('get-audio-duration');
+const fs = require('fs');
+const path = require('path');
 
 // Configure Cloudinary
 cloudinary.config({
@@ -64,6 +67,19 @@ router.post('/upload', authenticateToken, requireMuskan, upload.single('song'), 
       return res.status(400).json({ message: 'Title is required' });
     }
 
+    // Save the uploaded file temporarily
+    const tempFilePath = path.join(__dirname, '..', 'temp', `${Date.now()}-${req.file.originalname}`);
+    fs.mkdirSync(path.dirname(tempFilePath), { recursive: true });
+    fs.writeFileSync(tempFilePath, req.file.buffer);
+
+    // Get real audio duration
+    let duration = 180;
+    try {
+      duration = Math.round(await getAudioDurationInSeconds(tempFilePath));
+    } catch (err) {
+      console.error('Error getting audio duration:', err);
+    }
+
     // Convert buffer to base64
     const fileBuffer = req.file.buffer;
     const base64File = `data:${req.file.mimetype};base64,${fileBuffer.toString('base64')}`;
@@ -76,9 +92,8 @@ router.post('/upload', authenticateToken, requireMuskan, upload.single('song'), 
       quality: 'auto:best'
     });
 
-    // Get audio duration (you might need to implement this based on your needs)
-    // For now, we'll set a default duration
-    const duration = 180; // 3 minutes default
+    // Delete the temp file
+    fs.unlinkSync(tempFilePath);
 
     // Find the current max uploadIndex
     const lastSong = await Song.findOne().sort({ uploadIndex: -1 });

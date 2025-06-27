@@ -104,9 +104,9 @@ const SongList = ({ songs, userRole, nowPlaying, onDelete, onRefresh }) => {
       let audio = audioRefs.current[song.id];
       if (!audio) {
         audio = new window.Audio(song.cloudinaryUrl);
-        audioRefs.current[song.id] = audio;
-        audio.addEventListener('ended', () => handleAudioEnded(song));
-        audio.addEventListener('error', (e) => console.error('Audio error:', e));
+      audioRefs.current[song.id] = audio;
+      audio.addEventListener('ended', () => handleAudioEnded(song));
+      audio.addEventListener('error', (e) => console.error('Audio error:', e));
         audio.addEventListener('timeupdate', () => {
           setCurrentTime(audio.currentTime);
         });
@@ -155,7 +155,6 @@ const SongList = ({ songs, userRole, nowPlaying, onDelete, onRefresh }) => {
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
-    notify('Song downloaded!');
   };
 
   // Handle speed change
@@ -449,7 +448,7 @@ const SongList = ({ songs, userRole, nowPlaying, onDelete, onRefresh }) => {
     };
   }, [showDeleteModal]);
 
-  // For sharing, show a toast when the share action is triggered (e.g., after copying link)
+  // For sharing, do not show a toast/notification
   const handleShare = (song) => {
     const url = song.cloudinaryUrl;
     const title = song.title;
@@ -458,17 +457,11 @@ const SongList = ({ songs, userRole, nowPlaying, onDelete, onRefresh }) => {
         title: `Listen to ${title}`,
         text: `Check out this song: ${title}`,
         url
-      }).then(() => notify('Shared!')).catch(() => notify('Share cancelled'));
+      });
     } else if (navigator.clipboard) {
-      navigator.clipboard.writeText(url)
-        .then(() => notify('Song link copied!'))
-        .catch(() => {
-          window.prompt('Copy this link:', url);
-          notify('Copy the link manually');
-        });
+      navigator.clipboard.writeText(url);
     } else {
       window.prompt('Copy this link:', url);
-      notify('Copy the link manually');
     }
   };
 
@@ -504,6 +497,18 @@ const SongList = ({ songs, userRole, nowPlaying, onDelete, onRefresh }) => {
     }
     setPlayHistoryLoading(false);
   };
+
+  // Prevent background scroll when play history modal is open
+  useEffect(() => {
+    if (showPlayHistoryModal) {
+      document.body.style.overflow = 'hidden';
+    } else {
+      document.body.style.overflow = '';
+    }
+    return () => {
+      document.body.style.overflow = '';
+    };
+  }, [showPlayHistoryModal]);
 
   return (
     <>
@@ -664,7 +669,7 @@ const SongList = ({ songs, userRole, nowPlaying, onDelete, onRefresh }) => {
                   {/* Row 1: Duration & Upload Time */}
                   <div className="flex flex-row gap-2 w-full sm:w-auto">
                     <span className="flex items-center text-xs text-gray-700 font-semibold bg-white/80 rounded px-2 py-1 shadow-sm" title="Duration">
-                      <svg className="h-4 w-4 mr-1 text-primary-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" strokeWidth="2" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6l4 2" /></svg>
+                      <svg className="h-4 w-4 mr-1 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" strokeWidth="2" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6l4 2" /></svg>
                       {song.duration}
                     </span>
                     <span className="flex items-center text-xs text-gray-700 font-semibold bg-white/80 rounded px-2 py-1 shadow-sm" title="Uploaded on">
@@ -679,45 +684,57 @@ const SongList = ({ songs, userRole, nowPlaying, onDelete, onRefresh }) => {
                   </div>
                   {/* Row 2: Download/Share/Delete Buttons (mobile: order-2, sm+: order-2) */}
                   <div className="flex flex-row gap-2 w-full sm:w-auto order-2">
-                    <button
+                  <button
                       className="flex items-center px-2 py-1 rounded bg-gray-100 hover:bg-gray-200 border border-gray-200 text-gray-700 text-xs font-medium transition"
-                      title="Download"
-                      onClick={() => handleDownload(song)}
-                    >
-                      <svg className="h-4 w-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2M7 10l5 5 5-5M12 4v12" /></svg>
-                      Download
-                    </button>
-                    <button
-                      className="flex items-center px-2 py-1 rounded bg-gray-100 hover:bg-gray-200 border border-gray-200 text-gray-700 text-xs font-medium transition"
-                      title="Share"
+                    title="Download"
+                    onClick={() => handleDownload(song)}
+                  >
+                    <svg className="h-4 w-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2M7 10l5 5 5-5M12 4v12" /></svg>
+                    Download
+                  </button>
+                  <button
+                    className="flex items-center px-2 py-1 rounded bg-gray-100 hover:bg-gray-200 border border-gray-200 text-gray-700 text-xs font-medium transition"
+                    title="Share"
                       onClick={() => handleShare(song)}
-                    >
+                  >
                       <svg className="h-4 w-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49" stroke="currentColor" strokeWidth="2"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49" stroke="currentColor" strokeWidth="2"/></svg>
-                      Share
-                    </button>
-                    {userRole === 'M' && (
-                      <button
+                    Share
+                  </button>
+                {userRole === 'M' && (
+                  <button
                         className="flex items-center px-2 py-1 rounded bg-gray-100 hover:bg-red-100 border border-gray-200 text-red-500 text-xs font-medium transition"
                         onClick={() => handleDeleteWithPassword(song.id)}
                         title="Delete"
-                      >
+                  >
                         <TrashIcon className="h-4 w-4 mr-1" /> Delete
-                      </button>
-                    )}
+                  </button>
+                )}
                   </div>
                   {/* Row 3: Play Count & Play Time (mobile: order-3, sm+: order-2) */}
                   <div className="flex flex-row gap-2 w-full sm:w-auto justify-center order-3 sm:order-2">
-                    <span
-                      className="flex items-center text-base font-extrabold bg-gradient-to-r from-pink-500 to-rose-400 text-white rounded-full px-3 sm:px-4 py-1 shadow-lg border-2 border-pink-300 ring-2 ring-pink-200/60 cursor-pointer hover:scale-105 transition"
-                      style={{boxShadow:'0 2px 12px 0 rgba(232,80,140,0.15)'}}
+                    <button
+                      className="flex items-center rounded border px-2 py-0.5 text-md font-semibold shadow-sm transition focus:outline-none focus:ring-2"
+                      style={{ minWidth: 44, background: 'linear-gradient(135deg, #ffe259 0%, #ffa751 100%)', color: '#8a4b0b', borderColor: '#ffe59e' }}
                       title="Total plays (Vinay)"
                       onClick={() => handleShowPlayHistory(song)}
                     >
-                      <svg className="h-5 w-5 mr-2 text-white drop-shadow" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 18v-6a9 9 0 0118 0v6" /><circle cx="12" cy="18" r="4" strokeWidth="2" /></svg>
+                      {/* Heart+Play icon for play count */}
+                      <svg className="h-4 w-4 mr-2" viewBox="0 0 24 24" fill="none" stroke="#8a4b0b" strokeWidth={2}>
+                        <path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 6.01 4.01 4 6.5 4c1.74 0 3.41 1.01 4.13 2.44h.74C14.09 5.01 15.76 4 17.5 4 19.99 4 22 6.01 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/>
+                        <polygon points="10.5,8.5 16,12 10.5,15.5" fill="#fff"/>
+                      </svg>
                       {song.playCounts?.V ?? 0}
-                    </span>
-                    <span className="flex items-center text-sm font-bold bg-gradient-to-r from-amber-400 to-yellow-300 text-amber-900 rounded-full px-2 sm:px-3 py-1 shadow border border-amber-200" title="Total play time (Vinay)">
-                      <svg className="h-4 w-4 mr-1 text-amber-700" fill="none" stroke="currentColor" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" strokeWidth="2" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6l4 2" /></svg>
+                    </button>
+                    <span
+                      className="flex items-center rounded border text-md px-2 py-0.5 font-semibold shadow-sm transition ml-2"
+                      style={{ minWidth: 44, background: 'linear-gradient(135deg, #ffe259 0%, #ffa751 100%)', color: '#8a4b0b', borderColor: '#ffe59e' }}
+                      title="Total play time (Vinay)"
+                    >
+                      {/* Clock icon for play time */}
+                      <svg className="h-4 w-4 mr-2" fill="none" stroke="#8a4b0b" strokeWidth={2} viewBox="0 0 24 24">
+                        <circle cx="12" cy="12" r="10" />
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6l4 2" />
+                      </svg>
                       {(() => {
                         const durationSec = durationToSeconds(song.duration);
                         const playTime = (song.playCounts?.V ?? 0) * durationSec;
@@ -725,7 +742,7 @@ const SongList = ({ songs, userRole, nowPlaying, onDelete, onRefresh }) => {
                       })()}
                     </span>
                   </div>
-                </div>
+                  </div>
               </div>
             </div>
 
@@ -798,7 +815,7 @@ const SongList = ({ songs, userRole, nowPlaying, onDelete, onRefresh }) => {
                     <div
                       className="bg-primary-500 h-2 rounded-full absolute top-1/2 left-0 -translate-y-1/2 transition-all duration-300"
                       style={{ width: `${((dragging && dragTime != null ? dragTime : (playingSong?.id === song.id ? currentTime : lastPlayedSongId === song.id ? lastPlayedTime : 0)) / (audioRefs.current[song.id]?.duration || durationToSeconds(song.duration) || 1)) * 100}%` }}
-                    ></div>
+                  ></div>
                     {/* Draggable thumb */}
                     <div
                       className="absolute z-10"
@@ -899,15 +916,20 @@ const SongList = ({ songs, userRole, nowPlaying, onDelete, onRefresh }) => {
                   <svg className="h-5 w-5 text-pink-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" strokeWidth="2" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 14s1.5 2 4 2 4-2 4-2" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 9h.01M15 9h.01" /></svg>
                 </button>
                 <button
-                  className={`rounded-full p-2 hover:bg-blue-50 transition ${recording[song.id] ? 'text-red-500' : 'text-blue-400'}`}
+                  className={`rounded-full p-2 hover:bg-blue-50 transition ${recording[song.id] ? 'text-red-500' : 'text-blue-500'}`}
                   onClick={() => recording[song.id] ? stopRecording(song.id) : startRecording(song.id)}
                   disabled={commentLoading[song.id]}
                   title={recording[song.id] ? 'Stop recording' : 'Record audio comment'}
                 >
                   {recording[song.id] ? (
-                    <svg className="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><rect x="9" y="9" width="6" height="6" rx="1" strokeWidth="2" /><rect x="3" y="3" width="18" height="18" rx="2" strokeWidth="2" /></svg>
+                    <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><rect x="9" y="9" width="6" height="6" rx="1" strokeWidth="2" /><rect x="3" y="3" width="18" height="18" rx="2" strokeWidth="2"/></svg>
                   ) : (
-                    <svg className="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 3v10m0 0a4 4 0 004-4V7a4 4 0 00-8 0v2a4 4 0 004 4zm0 0v4m-4 0h8" /></svg>
+                    <svg className="h-5 w-5 text-blue-500" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                      <rect x="9" y="2" width="6" height="12" rx="3"/>
+                      <path d="M5 10v2a7 7 0 0 0 14 0v-2"/>
+                      <line x1="12" y1="22" x2="12" y2="18"/>
+                      <line x1="8" y1="22" x2="16" y2="22"/>
+                    </svg>
                   )}
                 </button>
                 <button
