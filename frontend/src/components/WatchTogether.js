@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import YouTube from 'react-youtube';
 import { useSocket } from '../contexts/SocketContext';
-import { MdPlayArrow, MdPause, MdVolumeOff, MdVolumeUp, MdLoop, MdSkipNext, MdSkipPrevious, MdReplay10, MdForward10 } from 'react-icons/md';
+import { MdPlayArrow, MdPause, MdVolumeOff, MdVolumeUp, MdLoop, MdSkipNext, MdSkipPrevious, MdReplay10, MdForward10, MdSwitchCamera, MdCallEnd, MdFlipCameraAndroid, MdMic, MdMicOff } from 'react-icons/md';
 import { FaHeart } from 'react-icons/fa';
 import { useAuth } from '../contexts/AuthContext';
 
@@ -51,6 +51,7 @@ const WatchTogether = () => {
   const [audioWarning, setAudioWarning] = useState('');
   const [audioDevices, setAudioDevices] = useState([]);
   const [selectedAudioDeviceId, setSelectedAudioDeviceId] = useState('');
+  const [isMirrored, setIsMirrored] = useState(false); // Add this near other useState hooks
 
   // List available audio input devices for debugging
   useEffect(() => {
@@ -843,9 +844,17 @@ const WatchTogether = () => {
                   {isCallMuted ? 'Unmute' : 'Mute'}
                 </button>
               )}
+              {isCalling && (
+                <button
+                  onClick={() => setIsMirrored(m => !m)}
+                  className="bg-gradient-to-br from-purple-400 to-purple-600 hover:from-purple-500 hover:to-purple-700 text-white font-bold py-2 px-6 rounded-full shadow text-base transition-all duration-150 flex items-center gap-2"
+                >
+                  {isMirrored ? 'Unflip Camera' : 'Flip Camera'}
+                </button>
+              )}
             </div>
             {(localVideoStream || remoteVideoStream) && (
-              <div className="relative w-full h-[50vh] sm:h-[100vh] min-h-[320px] sm:min-h-[600px] max-h-[90vh] mt-4 rounded-2xl overflow-hidden shadow-xl border-4 border-pink-200 bg-gradient-to-br from-pink-100 to-blue-100">
+              <div className="relative w-full h-[50vh] sm:h-[100vh] min-h-[320px] sm:min-h-[600px] max-h-[90vh] mt-4 rounded-2xl overflow-hidden shadow-xl bg-gradient-to-br from-pink-100 to-blue-100">
                 {/* Remote (other's) video: top half */}
                 {remoteVideoStream && (
                   <video
@@ -859,8 +868,8 @@ const WatchTogether = () => {
                 {/* Local (self) video: bottom half */}
                 {localVideoStream && (
                   <video
-                    className="absolute left-0 w-full h-1/2 object-cover border-t-2 border-pink-300"
-                    style={{ top: '50%', height: '50%', minHeight: '160px', maxHeight: '45vh' }}
+                    className={`absolute left-0 w-full h-1/2 object-cover border-t-2 border-pink-300${isMirrored ? ' scale-x-[-1]' : ''}`}
+                    style={{ top: '50%', height: '50%', minHeight: '160px', maxHeight: '45vh', transform: isMirrored ? 'scaleX(-1)' : undefined }}
                     autoPlay
                     playsInline
                     muted
@@ -876,20 +885,37 @@ const WatchTogether = () => {
                 )}
               </div>
             )}
-            {/* Video Call Controls */}
-            {audioDevices.length > 0 && (
-              <div className="w-full flex flex-col items-center mb-2">
-                <label className="text-xs text-gray-600 mb-1">Select Microphone:</label>
-                <select
-                  className="border border-pink-300 rounded px-2 py-1 text-sm"
-                  value={selectedAudioDeviceId}
-                  onChange={e => setSelectedAudioDeviceId(e.target.value)}
-                  // Allow changing mic even during call
-                >
-                  {audioDevices.map(device => (
-                    <option key={device.deviceId} value={device.deviceId}>{device.label || `Microphone (${device.deviceId})`}</option>
-                  ))}
-                </select>
+            {/* Controls and mic selector below video area, minimal design, no pink border */}
+            {isCalling && (
+              <div className="w-full flex flex-col items-center justify-center gap-2 mb-4 mt-2">
+                <div className="flex items-center justify-center gap-4">
+                  <button onClick={handleCallMuteToggle} title={isCallMuted ? 'Unmute' : 'Mute'} className="p-2 rounded-full hover:bg-gray-100 transition-all">
+                    {isCallMuted ? <MdMicOff size={24} className="text-blue-600" /> : <MdMic size={24} className="text-blue-600" />}
+                  </button>
+                  <button onClick={() => setIsMirrored(m => !m)} title={isMirrored ? 'Unflip Camera' : 'Flip Camera'} className="p-2 rounded-full hover:bg-gray-100 transition-all">
+                    <MdFlipCameraAndroid size={24} className="text-purple-600" />
+                  </button>
+                  <button onClick={handleSwitchCamera} title="Switch Camera" className="p-2 rounded-full hover:bg-gray-100 transition-all">
+                    <MdSwitchCamera size={24} className="text-yellow-600" />
+                  </button>
+                  <button onClick={handleStopCall} title="Stop Call" className="p-2 rounded-full hover:bg-gray-100 transition-all">
+                    <MdCallEnd size={24} className="text-red-600" />
+                  </button>
+                </div>
+                {audioDevices.length > 0 && (
+                  <div className="flex flex-col items-center w-full mt-1">
+                    <label className="text-xs text-gray-600 mb-1">Select Microphone:</label>
+                    <select
+                      className="border rounded px-2 py-1 text-sm w-48"
+                      value={selectedAudioDeviceId}
+                      onChange={e => setSelectedAudioDeviceId(e.target.value)}
+                    >
+                      {audioDevices.map(device => (
+                        <option key={device.deviceId} value={device.deviceId}>{device.label || `Microphone (${device.deviceId})`}</option>
+                      ))}
+                    </select>
+                  </div>
+                )}
               </div>
             )}
           </>
