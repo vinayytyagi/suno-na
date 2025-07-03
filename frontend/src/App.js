@@ -8,6 +8,7 @@ import Dashboard from './components/Dashboard';
 import MVSplash from './components/LoveDoveeLoader';
 import { NotificationProvider } from './contexts/NotificationContext';
 import NotificationBar from './components/NotificationBar';
+import WatchTogether from './components/WatchTogether';
 import './App.css';
 
 // Protected Route Component
@@ -43,6 +44,14 @@ const AppContent = () => {
             element={
               <ProtectedRoute>
                 <Dashboard />
+              </ProtectedRoute>
+            } 
+          />
+          <Route 
+            path="/watch-together" 
+            element={
+              <ProtectedRoute>
+                <WatchTogether />
               </ProtectedRoute>
             } 
           />

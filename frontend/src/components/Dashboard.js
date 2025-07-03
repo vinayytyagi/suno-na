@@ -5,6 +5,8 @@ import SongList from './SongList';
 import UploadSong from './UploadSong';
 import Header from './Header';
 import axios from 'axios';
+import { useNavigate } from 'react-router-dom';
+import { MdOndemandVideo } from 'react-icons/md';
 
 // Get API URL from environment variable
 const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000';
@@ -15,6 +17,7 @@ const Dashboard = () => {
   const [songs, setSongs] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const navigate = useNavigate();
 
   useEffect(() => {
     fetchSongs();
@@ -174,6 +177,15 @@ const Dashboard = () => {
               onDelete={handleSongDelete}
               onRefresh={fetchSongs}
             />
+          </div>
+
+          <div className="flex justify-center mt-6">
+            <button
+              onClick={() => navigate('/watch-together')}
+              className="bg-gradient-to-br from-pink-400 to-pink-600 hover:from-pink-500 hover:to-pink-700 text-white font-bold py-3 px-8 rounded-full shadow-lg text-xl transition-all duration-150 flex items-center gap-2"
+            >
+              <MdOndemandVideo size={24} /> Watch Together
+            </button>
           </div>
         </div>
       </div>

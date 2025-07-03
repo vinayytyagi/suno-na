@@ -178,6 +178,70 @@ io.on('connection', (socket) => {
       }
     }
   });
+
+  // --- Watch Together Feature ---
+  // User joins the watch-together room
+  socket.on('joinWatchRoom', (roomId = 'watch-together') => {
+    socket.join(roomId);
+    // Optionally notify others in the room
+    socket.to(roomId).emit('userJoinedWatchRoom', { socketId: socket.id });
+  });
+
+  // Play event
+  socket.on('videoPlay', ({ roomId = 'watch-together', currentTime }) => {
+    socket.to(roomId).emit('videoPlay', { currentTime });
+  });
+
+  // Pause event
+  socket.on('videoPause', ({ roomId = 'watch-together', currentTime }) => {
+    socket.to(roomId).emit('videoPause', { currentTime });
+  });
+
+  // Seek event
+  socket.on('videoSeek', ({ roomId = 'watch-together', seekTime }) => {
+    socket.to(roomId).emit('videoSeek', { seekTime });
+  });
+
+  // Sync request (when a user reconnects or joins late)
+  socket.on('syncRequest', ({ roomId = 'watch-together' }) => {
+    // Ask other users in the room to send their current state
+    socket.to(roomId).emit('syncRequest', { requester: socket.id });
+  });
+
+  // Sync state (response to syncRequest)
+  socket.on('syncState', ({ roomId = 'watch-together', state, toSocketId }) => {
+    // Send the current video state to the requester only
+    io.to(toSocketId).emit('syncState', { state });
+  });
+
+  // Video load event (sync videoId)
+  socket.on('videoLoad', ({ roomId = 'watch-together', videoId }) => {
+    socket.to(roomId).emit('videoLoad', { videoId });
+  });
+
+  // Video loop event (sync loop state)
+  socket.on('videoLoop', ({ roomId = 'watch-together', isLooping }) => {
+    socket.to(roomId).emit('videoLoop', { isLooping });
+  });
+
+  // --- Watch Together Tab Changed ---
+  socket.on('watchTogetherTabChanged', ({ role, tabChanged }) => {
+    socket.to('watch-together').emit('watchTogetherTabChanged', { role, tabChanged });
+  });
+
+  // --- Video Call Signaling (WebRTC) ---
+  socket.on('videoCallOffer', ({ offer, roomId = 'watch-together' }) => {
+    socket.to(roomId).emit('videoCallOffer', { offer });
+  });
+  socket.on('videoCallAnswer', ({ answer, roomId = 'watch-together' }) => {
+    socket.to(roomId).emit('videoCallAnswer', { answer });
+  });
+  socket.on('videoCallCandidate', ({ candidate, roomId = 'watch-together' }) => {
+    socket.to(roomId).emit('videoCallCandidate', { candidate });
+  });
+  socket.on('videoCallStop', ({ roomId = 'watch-together' }) => {
+    socket.to(roomId).emit('videoCallStop');
+  });
 });
 
 // MongoDB connection

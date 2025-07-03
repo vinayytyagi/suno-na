@@ -10,6 +10,8 @@ import { useLocation } from '../contexts/LocationContext';
 import axios from 'axios';
 import SpinnerLoader from './SpinnerLoader';
 import { useSocket } from '../contexts/SocketContext';
+import { useNavigate } from 'react-router-dom';
+import { MdOndemandVideo } from 'react-icons/md';
 
 const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000';
 
@@ -26,6 +28,7 @@ const Header = ({ user, onlineUsers, onLogout }) => {
   const [showSettingsModal, setShowSettingsModal] = useState(false);
   const [settingsPassword, setSettingsPassword] = useState('');
   const [settingsError, setSettingsError] = useState('');
+  const navigate = useNavigate();
 
   // Fetch Muskan's location from backend when Vinay opens Settings
   React.useEffect(() => {
@@ -224,6 +227,16 @@ const Header = ({ user, onlineUsers, onLogout }) => {
               </div>
             )}
 
+            {/* Watch Together Button */}
+            <div className="flex-1 flex justify-center sm:justify-end items-center">
+              <button
+                onClick={() => navigate('/watch-together')}
+                className="bg-gradient-to-br from-pink-400 to-pink-600 hover:from-pink-500 hover:to-pink-700 text-white font-bold py-2 px-5 rounded-full shadow text-base transition-all duration-150 flex items-center gap-2"
+              >
+                <MdOndemandVideo size={22} /> Watch Together
+              </button>
+            </div>
+
             {/* Logout Button */}
             <button
               onClick={onLogout}
@@ -350,6 +363,16 @@ const Header = ({ user, onlineUsers, onLogout }) => {
                 )}
               </div>
             )}
+
+            {/* Watch Together Button */}
+            <div className="flex-1 flex justify-center sm:justify-end items-center">
+              <button
+                onClick={() => navigate('/watch-together')}
+                className="bg-gradient-to-br from-pink-400 to-pink-600 hover:from-pink-500 hover:to-pink-700 text-white font-bold py-2 px-5 rounded-full shadow text-base transition-all duration-150 flex items-center gap-2"
+              >
+                <MdOndemandVideo size={22} /> Watch Together
+              </button>
+            </div>
 
             {/* Logout Button */}
             <button
