@@ -4,6 +4,7 @@ import { useSocket } from '../contexts/SocketContext';
 import { MdPlayArrow, MdPause, MdVolumeOff, MdVolumeUp, MdLoop, MdSkipNext, MdSkipPrevious, MdReplay10, MdForward10, MdSwitchCamera, MdCallEnd, MdFlipCameraAndroid, MdMic, MdMicOff } from 'react-icons/md';
 import { FaHeart } from 'react-icons/fa';
 import { useAuth } from '../contexts/AuthContext';
+import TwilioVideoCall from './TwilioVideoCall';
 
 const WATCH_ROOM = 'watch-together';
 
@@ -52,6 +53,7 @@ const WatchTogether = () => {
   const [audioDevices, setAudioDevices] = useState([]);
   const [selectedAudioDeviceId, setSelectedAudioDeviceId] = useState('');
   const [isMirrored, setIsMirrored] = useState(false); // Add this near other useState hooks
+  const [showTwilioCall, setShowTwilioCall] = useState(false); // Twilio video call state
 
   // List available audio input devices for debugging
   useEffect(() => {
@@ -852,6 +854,12 @@ const WatchTogether = () => {
                   {isMirrored ? 'Unflip Camera' : 'Flip Camera'}
                 </button>
               )}
+              <button
+                onClick={() => setShowTwilioCall(true)}
+                className="bg-gradient-to-br from-green-400 to-green-600 hover:from-green-500 hover:to-green-700 text-white font-bold py-2 px-6 rounded-full shadow text-base transition-all duration-150 flex items-center gap-2"
+              >
+                Start Twilio Call
+              </button>
             </div>
             {(localVideoStream || remoteVideoStream) && (
               <div className="relative w-full h-[50vh] sm:h-[100vh] min-h-[320px] sm:min-h-[600px] max-h-[90vh] mt-4 rounded-2xl overflow-hidden shadow-xl bg-gradient-to-br from-pink-100 to-blue-100">
@@ -922,6 +930,12 @@ const WatchTogether = () => {
         )}
         <p className="mt-6 text-pink-600 text-center text-lg font-medium">Share a YouTube video and control it together in real time!</p>
       </div>
+      
+      {/* Twilio Video Call Modal */}
+      <TwilioVideoCall 
+        isActive={showTwilioCall} 
+        onClose={() => setShowTwilioCall(false)} 
+      />
     </div>
   );
 };
