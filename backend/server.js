@@ -7,6 +7,7 @@ require('dotenv').config();
 
 const authRoutes = require('./routes/auth');
 const songRoutes = require('./routes/songs');
+const twilioVideoRoutes = require('./routes/twilioVideo');
 
 const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:3000';
 
@@ -36,6 +37,7 @@ app.get('/api/test', (req, res) => {
 // Routes
 app.use('/api/auth', authRoutes);
 app.use('/api/songs', songRoutes);
+app.use('/api/twilio-video', twilioVideoRoutes);
 
 // Global error handling middleware
 app.use((error, req, res, next) => {
@@ -241,6 +243,23 @@ io.on('connection', (socket) => {
   });
   socket.on('videoCallStop', ({ roomId = 'watch-together' }) => {
     socket.to(roomId).emit('videoCallStop');
+  });
+
+  // --- Twilio Video Call Events ---
+  socket.on('twilioVideoCallRequest', ({ roomName, identity }) => {
+    socket.to('watch-together').emit('twilioVideoCallRequest', { roomName, identity });
+  });
+  
+  socket.on('twilioVideoCallAccept', ({ roomName, identity }) => {
+    socket.to('watch-together').emit('twilioVideoCallAccept', { roomName, identity });
+  });
+  
+  socket.on('twilioVideoCallReject', ({ roomName, identity }) => {
+    socket.to('watch-together').emit('twilioVideoCallReject', { roomName, identity });
+  });
+  
+  socket.on('twilioVideoCallEnd', ({ roomName, identity }) => {
+    socket.to('watch-together').emit('twilioVideoCallEnd', { roomName, identity });
   });
 });
 
